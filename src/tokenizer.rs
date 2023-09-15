@@ -17,13 +17,20 @@ pub enum Token {
     Slash,
     Star,
     Less,
-    LessEqual,
+    Percent,
     Greater,
-    GreaterEqual,
     Equal,
+    Not,
+    And,
+    Or,
+
+    // Two-character tokens.
     EqualEqual,
-    Bang,
-    BangEqual,
+    LessEqual,
+    GreaterEqual,
+    NotEqual,
+    AndAnd,
+    OrOr,
 
     // Literals.
     Identifier(String),
@@ -34,7 +41,6 @@ pub enum Token {
     // Keywords.
     If,
     Else,
-    ElseIf,
     For,
     While,
     Return,
@@ -46,6 +52,34 @@ pub enum Token {
     Eof,
     Error(String),
     Comment(String),
+}
+
+impl Token {
+    pub(crate) fn is_ignorable(&self) -> bool {
+        match self {
+            Token::Comment(_) => true,
+            _ => false,
+        }
+    }
+
+    pub(crate) fn is_binary_op(&self) -> bool {
+        match self {
+            Token::Plus
+            | Token::Minus
+            | Token::Star
+            | Token::Slash
+            | Token::Percent
+            | Token::EqualEqual
+            | Token::NotEqual
+            | Token::Less
+            | Token::LessEqual
+            | Token::Greater
+            | Token::GreaterEqual
+            | Token::And
+            | Token::Or => true,
+            _ => false,
+        }
+    }
 }
 
 pub fn tokenize(src: &str) -> Vec<Token> {
@@ -73,12 +107,13 @@ fn next_token(chars: &mut Peekable<Chars<'_>>) -> Option<Token> {
             '+' => Token::Plus,
             ';' => Token::Semicolon,
             '*' => Token::Star,
+            '%' => Token::Percent,
             '!' => {
                 if chars.peek() == Some(&'=') {
                     chars.next();
-                    Token::BangEqual
+                    Token::NotEqual
                 } else {
-                    Token::Bang
+                    Token::Not
                 }
             }
             '=' => {
@@ -113,6 +148,22 @@ fn next_token(chars: &mut Peekable<Chars<'_>>) -> Option<Token> {
                     Token::Slash
                 }
             }
+            '&' => {
+                if chars.peek() == Some(&'&') {
+                    chars.next();
+                    Token::AndAnd
+                } else {
+                    Token::And
+                }
+            }
+            '|' => {
+                if chars.peek() == Some(&'|') {
+                    chars.next();
+                    Token::OrOr
+                } else {
+                    Token::Or
+                }
+            }
             '"' => Token::String(read_string(chars)),
             n if n >= '0' && n <= '9' => Token::Number(read_number(chars, n)),
             n if n >= 'a' && n <= 'z' || n >= 'A' && n <= 'Z' => read_identifier(chars, n),
@@ -144,6 +195,16 @@ fn read_string(chars: &mut Peekable<Chars<'_>>) -> String {
     while let Some(c) = chars.next() {
         match c {
             '"' => break,
+            '\\' => {
+                if let Some(c) = chars.next() {
+                    match c {
+                        'n' => string.push('\n'),
+                        't' => string.push('\t'),
+                        'r' => string.push('\r'),
+                        _ => string.push(c),
+                    }
+                }
+            }
             _ => string.push(c),
         }
     }
@@ -175,7 +236,6 @@ fn read_identifier(chars: &mut Peekable<Chars<'_>>, first_char: char) -> Token {
     match identifier.as_str() {
         "if" => Token::If,
         "else" => Token::Else,
-        "elseif" => Token::ElseIf,
         "for" => Token::For,
         "while" => Token::While,
         "return" => Token::Return,

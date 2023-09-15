@@ -1,7 +1,7 @@
 print "input: ";
 
-getchar a;
-getchar b;
+let a = 2;
+let b = 5;
 
 if a < b {
     print "a<b\n";
