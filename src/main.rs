@@ -14,5 +14,8 @@ fn main() {
     }
     let filename = &args[1];
     let contents = read_to_string(filename).expect("Unable to read file");
-    let compiler = compile(&contents);
+    match compile(&contents) {
+        Ok(output) => println!("{}", output),
+        Err(e) => println!("{}", e),
+    }
 }

@@ -1,12 +1,11 @@
 use std::collections::HashMap;
 
 use crate::{
-    parser::{parse, Expr, Program},
+    parser::{parse, Expr, Program, Statement},
     tokenizer::tokenize,
 };
 
 pub(crate) struct Compiler {
-    program: Program,
     ptr: isize,
     stack_ptr: isize,
     output: Vec<char>,
@@ -14,9 +13,8 @@ pub(crate) struct Compiler {
 }
 
 impl Compiler {
-    fn new(program: Program) -> Self {
+    fn new() -> Self {
         Self {
-            program,
             ptr: 0,
             stack_ptr: 0,
             output: Vec::new(),
@@ -105,60 +103,182 @@ impl Compiler {
         self.dealloc(1);
     }
 
-    fn compile(&mut self) -> Result<(), String> {
-        for stmt in &self.program.statements {
+    /// Adds the value at `src` to the value at `dest` and writes it to `dest`.
+    /// The value at `src` is set to 0.
+    fn add(&mut self, src: usize, dest: usize) {
+        self.set_ptr(src);
+        self.emit("[-");
+        self.set_ptr(dest);
+        self.emit("+");
+        self.set_ptr(src);
+        self.emit("]");
+    }
+
+    /// Subtracts the value at `src` from the value at `dest` and writes it to `dest`.
+    /// The value at `src` is set to 0.
+    fn sub(&mut self, src: usize, dest: usize) {
+        self.set_ptr(src);
+        self.emit("[-");
+        self.set_ptr(dest);
+        self.emit("-");
+        self.set_ptr(src);
+        self.emit("]");
+    }
+
+    // Multiplies the value at `src` with the value at `dest` and writes it to `dest`.
+    // The value at `src` is set to 0.
+    fn mul(&mut self, src: usize, dest: usize) {
+        todo!("Multiplication is not yet supported")
+    }
+
+    fn div(&mut self, src: usize, dest: usize) {
+        todo!("Division is not yet supported")
+    }
+
+    fn modulo(&mut self, src: usize, dest: usize) {
+        todo!("Modulo is not yet supported")
+    }
+
+    fn eq(&mut self, src: usize, dest: usize) {
+        todo!("Equality is not yet supported")
+    }
+
+    fn neq(&mut self, src: usize, dest: usize) {
+        todo!("Inequality is not yet supported")
+    }
+
+    fn lt(&mut self, src: usize, dest: usize) {
+        todo!("Less than is not yet supported")
+    }
+
+    fn leq(&mut self, src: usize, dest: usize) {
+        todo!("Less than or equal is not yet supported")
+    }
+
+    fn gt(&mut self, src: usize, dest: usize) {
+        todo!("Greater than is not yet supported")
+    }
+
+    fn geq(&mut self, src: usize, dest: usize) {
+        todo!("Greater than or equal is not yet supported")
+    }
+
+    fn and(&mut self, src: usize, dest: usize) {
+        todo!("Logical and is not yet supported")
+    }
+
+    fn or(&mut self, src: usize, dest: usize) {
+        todo!("Logical or is not yet supported")
+    }
+
+    fn compile(&mut self, statements: &[Statement]) -> Result<(), String> {
+        for stmt in statements {
             use crate::parser::Statement as S;
             match stmt {
                 S::FunctionDefinition { name, params, body } => {
-                    todo!("Function definitions are not yet supported")
+                    self.function_declaration(&name, &params, body)?
                 }
                 S::VariableDefinition { name, initializer } => {
-                    variable_definition(self, name, initializer)?
+                    self.variable_definition(&name, initializer.as_ref())?
                 }
                 S::Return(_) => todo!(),
                 S::Print(_) => todo!(),
-                S::Block(_) => todo!(),
+                S::Block(block_statements) => self.compile(&block_statements)?,
                 S::If {
                     condition,
                     then_branch,
                     else_branch,
-                } => todo!(),
-                S::While { condition, body } => todo!(),
+                } => self.if_statement(&condition, &then_branch, else_branch.as_deref())?,
+                S::While { condition, body } => self.while_statement(&condition, &body)?,
             }
         }
         Ok(())
     }
 
+    fn function_declaration(
+        &mut self,
+        name: &str,
+        params: &[String],
+        body: &Statement,
+    ) -> Result<(), String> {
+        todo!("Function declarations are not yet supported")
+    }
+
     fn variable_definition(
         &mut self,
         name: &str,
-        initializer: Option<Box<Expr>>,
+        initializer: Option<&Expr>,
     ) -> Result<(), String> {
         let index = self.alloc_var(name);
         if let Some(init) = initializer {
-            self.expression(&init)?;
-            self.copy_val(self.ptr as usize, index);
+            let expr_index = self.evaluate_expression(&init)?;
+            self.move_val(expr_index, index);
+            self.dealloc(1);
         }
         Ok(())
     }
 
-    fn expression(&mut self, expr: &Expr) -> Result<(), String> {
+    fn if_statement(
+        &mut self,
+        condition: &Expr,
+        then_branch: &Statement,
+        else_branch: Option<&Statement>,
+    ) -> Result<(), String> {
+        todo!("If statements are not yet supported")
+    }
+
+    fn while_statement(&mut self, condition: &Expr, body: &Statement) -> Result<(), String> {
+        todo!("While statements are not yet supported")
+    }
+
+    /// Evaluates an expression and returns the index of the result on the stack.
+    /// The value is not popped from the stack.
+    /// The caller is responsible for deallocating the value.
+    fn evaluate_expression(&mut self, expr: &Expr) -> Result<usize, String> {
         use crate::parser::Expr as E;
+        use crate::parser::BinaryOp as BO;
+        let out = self.alloc(1);
         match expr {
             E::Unary { op, rhs } => todo!(),
-            E::Binary { lhs, op, rhs } => todo!(),
-            E::Number(n) => todo!(),
+            E::Binary { lhs, op, rhs } => {
+                let lhs = self.evaluate_expression(&lhs)?;
+                let rhs = self.evaluate_expression(&rhs)?;
+                self.add(lhs, out);
+                match op {
+                    BO::Add => self.add(rhs, out),
+                    BO::Sub => self.sub(rhs, out),
+                    BO::Mul => self.mul(rhs, out),
+                    BO::Div => self.div(rhs, out),
+                    BO::Mod => self.modulo(rhs, out),
+                    BO::Eq => self.eq(rhs, out),
+                    BO::Neq => self.neq(rhs, out),
+                    BO::Lt => self.lt(rhs, out),
+                    BO::Leq => self.leq(rhs, out),
+                    BO::Gt => self.gt(rhs, out),
+                    BO::Geq => self.geq(rhs, out),
+                    BO::And => self.and(rhs, out),
+                    BO::Or => self.or(rhs, out),
+                }
+                self.dealloc(2);
+            },
+            E::Number(n) => self.set_val(out, *n),
             E::String(_) => todo!("Strings are not yet supported"),
-            E::Identifier(_) => todo!(),
+            E::Identifier(name) => {
+                match self.name_table.get(name) {
+                    Some(index) => self.copy_val(*index, out),
+                    None => return Err(format!("Variable {} is not defined", name)),
+                }
+            }
             E::Call { callee, args } => todo!(),
         }
+        Ok(out)
     }
 }
 
 pub fn compile(src: &str) -> Result<String, String> {
     let tokens = tokenize(src);
     let program = parse(&tokens)?;
-    let mut compiler = Compiler::new(program);
-    compiler.compile()?;
-    Ok("".to_string())
+    let mut compiler = Compiler::new();
+    compiler.compile(&program.statements)?;
+    Ok(compiler.output.iter().collect())
 }
