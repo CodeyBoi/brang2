@@ -235,8 +235,8 @@ impl Compiler {
     /// The value is not popped from the stack.
     /// The caller is responsible for deallocating the value.
     fn evaluate_expression(&mut self, expr: &Expr) -> Result<usize, String> {
-        use crate::parser::Expr as E;
         use crate::parser::BinaryOp as BO;
+        use crate::parser::Expr as E;
         let out = self.alloc(1);
         match expr {
             E::Unary { op, rhs } => todo!(),
@@ -260,15 +260,13 @@ impl Compiler {
                     BO::Or => self.or(rhs, out),
                 }
                 self.dealloc(2);
-            },
+            }
             E::Number(n) => self.set_val(out, *n),
             E::String(_) => todo!("Strings are not yet supported"),
-            E::Identifier(name) => {
-                match self.name_table.get(name) {
-                    Some(index) => self.copy_val(*index, out),
-                    None => return Err(format!("Variable {} is not defined", name)),
-                }
-            }
+            E::Identifier(name) => match self.name_table.get(name) {
+                Some(index) => self.copy_val(*index, out),
+                None => return Err(format!("Variable {} is not defined", name)),
+            },
             E::Call { callee, args } => todo!(),
         }
         Ok(out)
