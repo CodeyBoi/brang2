@@ -7,7 +7,7 @@ use std::{
 };
 
 const TEMP_FILEPATH: &str = "temp.rs";
-const TEMP_EXECPATH: &str = "temp.out";
+const TEMP_EXECPATH: &str = "temp";
 
 #[derive(Debug)]
 pub enum RunError {
@@ -64,6 +64,7 @@ fn to_bf(src: &str) -> Result<String, RunError> {
             ',' => "stack[sp] = std::io::stdin().bytes().next().unwrap().unwrap();",
             '[' => "while stack[sp] != 0 {",
             ']' => "}",
+            ' ' | '\n' | '\t' => continue,
             _ => return Err(RunError::InvalidChar(i, c)),
         });
         out.push('\n');
@@ -104,7 +105,8 @@ pub fn make(srcpath: impl AsRef<Path>, outpath: impl AsRef<Path>) -> Result<(), 
 
 pub fn run_file(srcpath: impl AsRef<Path>) -> Result<(), RunError> {
     make(srcpath, TEMP_EXECPATH)?;
-    let status = std::process::Command::new(TEMP_EXECPATH).status()?;
+    let exec_path = Path::new(".").join(TEMP_EXECPATH);
+    let status = std::process::Command::new(exec_path).status()?;
     if !status.success() {
         return Err(RunError::Runtime(format!(
             "Process exited with status code {}",

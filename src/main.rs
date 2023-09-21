@@ -18,7 +18,7 @@ struct Cli {
 
 #[derive(Subcommand, Clone)]
 enum Command {
-    Compile {
+    Make {
         input: String,
         #[clap(short, long, default_value = "out.b")]
         output: String,
@@ -31,7 +31,7 @@ enum Command {
 fn main() {
     let args = Cli::parse();
     match args.command {
-        Command::Compile { input, output } => {
+        Command::Make { input, output } => {
             let src = std::fs::read_to_string(&input).expect("Could not read source code file");
             let compilation = compiler::compile(&src).expect("Could not compile source code");
             let outfile = File::create(&output).expect("Could not create output file");
