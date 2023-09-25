@@ -58,8 +58,8 @@ fn to_bf(src: &str) -> Result<String, RunError> {
         out.push_str(match c {
             '>' => "sp += 1;",
             '<' => "sp -= 1;",
-            '+' => "stack[sp] += 1;",
-            '-' => "stack[sp] -= 1;",
+            '+' => "stack[sp].wrapping_add(1);",
+            '-' => "stack[sp].wrapping_sub(1);",
             '.' => "print!(\"{}\", stack[sp] as char); std::io::stdout().flush().unwrap();",
             ',' => "stack[sp] = std::io::stdin().bytes().next().unwrap().unwrap();",
             '[' => "while stack[sp] != 0 {",

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    parser::{parse, Expr, Program, Statement},
+    parser::{parse, Expr, Statement},
     tokenizer::tokenize,
 };
 
@@ -33,7 +33,10 @@ impl Compiler {
     fn alloc(&mut self, size: usize) -> usize {
         let index = self.stack_ptr as usize;
         self.stack_ptr += size as isize;
-        self.set_val(index, 0);
+        // Initialize the cells to 0
+        for i in 0..size {
+            self.set_val(index + i, 0);
+        }
         index
     }
 
@@ -104,12 +107,8 @@ impl Compiler {
         self.dealloc(1);
     }
 
-    fn add(&mut self, src: usize, dest: usize) {
-        let tmp = self.alloc(1);
-    }
-
     /// Adds the value at `src` to the value at `dest` and writes it to `dest`.
-    /// The value at `src` is set to 0.
+    /// The value at `src` is set to 0. (the d stands for destructive)
     fn dadd(&mut self, src: usize, dest: usize) {
         self.set_ptr(src);
         self.emit("[-");
@@ -119,8 +118,17 @@ impl Compiler {
         self.emit("]");
     }
 
+    /// Adds the value at `src` to the value at `dest` and writes it to `dest`.
+    /// The value at `src` is left unchanged.
+    fn add(&mut self, src: usize, dest: usize) {
+        let tmp = self.alloc(1);
+        self.copy_val(src, &[tmp]);
+        self.dadd(tmp, dest);
+        self.dealloc(1);
+    }
+
     /// Subtracts the value at `src` from the value at `dest` and writes it to `dest`.
-    /// The value at `src` is set to 0.
+    /// The value at `src` is set to 0. (the d stands for destructive)
     fn dsub(&mut self, src: usize, dest: usize) {
         self.set_ptr(src);
         self.emit("[-");
@@ -130,22 +138,25 @@ impl Compiler {
         self.emit("]");
     }
 
-    // Multiplies the value at `src` with the value at `dest` and writes it to `dest`.
-    // Makes the value at `src` unusable.
-    fn dmul(&mut self, src: usize, dest: usize) {
-        let dest_copy = self.alloc(1);
+    fn sub(&mut self, src: usize, dest: usize) {
         let tmp = self.alloc(1);
-        self.copy_val(dest, &[dest_copy, tmp]);
+        self.copy_val(src, &[tmp]);
+        self.dsub(tmp, dest);
+        self.dealloc(1);
+    }
+
+    /// Multiplies the value at `src` with the value at `dest` and writes it to `dest`.
+    /// The value at `src` is left unchanged.
+    fn mul(&mut self, src: usize, dest: usize) {
+        let count = self.alloc(1);
+        self.copy_val(dest, &[count]);
         self.set_val(dest, 0);
-        self.set_ptr(src);
+        self.set_ptr(count);
         self.emit("[-");
-        self.set_ptr(tmp);
-        self.emit("[-");
-        self.set_ptr(dest);
-        self.emit("+");
-        self.set_ptr(tmp);
+        self.add(src, dest);
+        self.set_ptr(count);
         self.emit("]");
-        self.copy_val(src, dests)
+        self.dealloc(1);
     }
 
     fn div(&mut self, src: usize, dest: usize) {
@@ -190,24 +201,29 @@ impl Compiler {
 
     fn compile(&mut self, statements: &[Statement]) -> Result<(), String> {
         for stmt in statements {
-            use crate::parser::Statement as S;
-            match stmt {
-                S::FunctionDefinition { name, params, body } => {
-                    self.function_declaration(&name, &params, body)?
-                }
-                S::VariableDefinition { name, initializer } => {
-                    self.variable_definition(&name, initializer.as_ref())?
-                }
-                S::Return(_) => todo!(),
-                S::Print(_) => todo!(),
-                S::Block(block_statements) => self.compile(&block_statements)?,
-                S::If {
-                    condition,
-                    then_branch,
-                    else_branch,
-                } => self.if_statement(&condition, &then_branch, else_branch.as_deref())?,
-                S::While { condition, body } => self.while_statement(&condition, &body)?,
+            self.evaluate_statement(stmt)?;
+        }
+        Ok(())
+    }
+
+    fn evaluate_statement(&mut self, stmt: &Statement) -> Result<(), String> {
+        use crate::parser::Statement as S;
+        match stmt {
+            S::FunctionDefinition { name, params, body } => {
+                self.function_declaration(&name, &params, body)?
             }
+            S::VariableDefinition { name, initializer } => {
+                self.variable_definition(&name, initializer.as_ref())?
+            }
+            S::Return(_) => todo!(),
+            S::Print(_) => todo!(),
+            S::Block(block_statements) => self.compile(&block_statements)?,
+            S::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => self.if_statement(&condition, &then_branch, else_branch.as_deref())?,
+            S::While { condition, body } => self.while_statement(&condition, &body)?,
         }
         Ok(())
     }
@@ -242,7 +258,18 @@ impl Compiler {
         then_branch: &Statement,
         else_branch: Option<&Statement>,
     ) -> Result<(), String> {
-        todo!("If statements are not yet supported")
+        let condition_index = self.alloc(1);
+        self.evaluate_expression(&condition, condition_index)?;
+        self.set_ptr(condition_index);
+        self.emit("[[-]");
+        self.evaluate_statement(then_branch)?;
+        self.set_ptr(condition_index);
+        if let Some(branch) = else_branch {
+            self.emit("-]+[");
+            self.evaluate_statement(branch)?;
+        }
+        self.emit("]");
+        Ok(())
     }
 
     fn while_statement(&mut self, condition: &Expr, body: &Statement) -> Result<(), String> {
@@ -269,7 +296,7 @@ impl Compiler {
                 match op {
                     BO::Add => self.dadd(rhs, dest),
                     BO::Sub => self.dsub(rhs, dest),
-                    BO::Mul => self.dmul(rhs, dest),
+                    BO::Mul => self.mul(rhs, dest),
                     BO::Div => self.div(rhs, dest),
                     BO::Mod => self.modulo(rhs, dest),
                     BO::Eq => self.eq(rhs, dest),
