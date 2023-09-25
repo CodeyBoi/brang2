@@ -28,6 +28,8 @@ impl Compiler {
         }
     }
 
+    /// Allocates `size` cells on the stack and returns the index of the first cell.
+    /// The cells are initialized to 0.
     fn alloc(&mut self, size: usize) -> usize {
         let index = self.stack_ptr as usize;
         self.stack_ptr += size as isize;
@@ -78,22 +80,21 @@ impl Compiler {
 
     fn move_val(&mut self, src: usize, dest: usize) {
         self.set_val(dest, 0);
-        self.set_ptr(src);
-        self.emit("[-");
-        self.set_ptr(dest);
-        self.emit("+");
-        self.set_ptr(src);
-        self.emit("]");
+        self.dadd(src, dest);
     }
 
-    fn copy_val(&mut self, src: usize, dest: usize) {
+    fn copy_val(&mut self, src: usize, dests: &[usize]) {
+        for dest in dests {
+            self.set_val(*dest, 0);
+        }
         let tmp = self.alloc(1);
-        self.set_val(dest, 0);
         // Move value from src to tmp and dest
         self.set_ptr(src);
         self.emit("[-");
-        self.set_ptr(dest);
-        self.emit("+");
+        for dest in dests {
+            self.set_ptr(*dest);
+            self.emit("+");
+        }
         self.set_ptr(tmp);
         self.emit("+");
         self.set_ptr(src);
@@ -103,9 +104,13 @@ impl Compiler {
         self.dealloc(1);
     }
 
+    fn add(&mut self, src: usize, dest: usize) {
+        let tmp = self.alloc(1);
+    }
+
     /// Adds the value at `src` to the value at `dest` and writes it to `dest`.
     /// The value at `src` is set to 0.
-    fn add(&mut self, src: usize, dest: usize) {
+    fn dadd(&mut self, src: usize, dest: usize) {
         self.set_ptr(src);
         self.emit("[-");
         self.set_ptr(dest);
@@ -116,7 +121,7 @@ impl Compiler {
 
     /// Subtracts the value at `src` from the value at `dest` and writes it to `dest`.
     /// The value at `src` is set to 0.
-    fn sub(&mut self, src: usize, dest: usize) {
+    fn dsub(&mut self, src: usize, dest: usize) {
         self.set_ptr(src);
         self.emit("[-");
         self.set_ptr(dest);
@@ -126,9 +131,21 @@ impl Compiler {
     }
 
     // Multiplies the value at `src` with the value at `dest` and writes it to `dest`.
-    // The value at `src` is set to 0.
-    fn mul(&mut self, src: usize, dest: usize) {
-        todo!("Multiplication is not yet supported")
+    // Makes the value at `src` unusable.
+    fn dmul(&mut self, src: usize, dest: usize) {
+        let dest_copy = self.alloc(1);
+        let tmp = self.alloc(1);
+        self.copy_val(dest, &[dest_copy, tmp]);
+        self.set_val(dest, 0);
+        self.set_ptr(src);
+        self.emit("[-");
+        self.set_ptr(tmp);
+        self.emit("[-");
+        self.set_ptr(dest);
+        self.emit("+");
+        self.set_ptr(tmp);
+        self.emit("]");
+        self.copy_val(src, dests)
     }
 
     fn div(&mut self, src: usize, dest: usize) {
@@ -211,7 +228,8 @@ impl Compiler {
     ) -> Result<(), String> {
         let index = self.alloc_var(name);
         if let Some(init) = initializer {
-            let expr_index = self.evaluate_expression(&init)?;
+            let expr_index = self.alloc(1);
+            self.evaluate_expression(&init, expr_index)?;
             self.move_val(expr_index, index);
             self.dealloc(1);
         }
@@ -231,45 +249,49 @@ impl Compiler {
         todo!("While statements are not yet supported")
     }
 
-    /// Evaluates an expression and returns the index of the result on the stack.
-    /// The value is not popped from the stack.
-    /// The caller is responsible for deallocating the value.
-    fn evaluate_expression(&mut self, expr: &Expr) -> Result<usize, String> {
+    /// Evaluates an expression and writes the output to `dest`.
+    /// The value at `dest` is assumed to be 0.
+    fn evaluate_expression(&mut self, expr: &Expr, dest: usize) -> Result<(), String> {
         use crate::parser::BinaryOp as BO;
         use crate::parser::Expr as E;
-        let out = self.alloc(1);
         match expr {
             E::Unary { op, rhs } => todo!(),
-            E::Binary { lhs, op, rhs } => {
-                let lhs = self.evaluate_expression(&lhs)?;
-                let rhs = self.evaluate_expression(&rhs)?;
-                self.add(lhs, out);
+            E::Binary {
+                lhs: lhs_expr,
+                op,
+                rhs: rhs_expr,
+            } => {
+                let lhs = self.alloc(1);
+                let rhs = self.alloc(1);
+                self.evaluate_expression(&lhs_expr, lhs)?;
+                self.evaluate_expression(&rhs_expr, rhs)?;
+                self.dadd(lhs, dest);
                 match op {
-                    BO::Add => self.add(rhs, out),
-                    BO::Sub => self.sub(rhs, out),
-                    BO::Mul => self.mul(rhs, out),
-                    BO::Div => self.div(rhs, out),
-                    BO::Mod => self.modulo(rhs, out),
-                    BO::Eq => self.eq(rhs, out),
-                    BO::Neq => self.neq(rhs, out),
-                    BO::Lt => self.lt(rhs, out),
-                    BO::Leq => self.leq(rhs, out),
-                    BO::Gt => self.gt(rhs, out),
-                    BO::Geq => self.geq(rhs, out),
-                    BO::And => self.and(rhs, out),
-                    BO::Or => self.or(rhs, out),
+                    BO::Add => self.dadd(rhs, dest),
+                    BO::Sub => self.dsub(rhs, dest),
+                    BO::Mul => self.dmul(rhs, dest),
+                    BO::Div => self.div(rhs, dest),
+                    BO::Mod => self.modulo(rhs, dest),
+                    BO::Eq => self.eq(rhs, dest),
+                    BO::Neq => self.neq(rhs, dest),
+                    BO::Lt => self.lt(rhs, dest),
+                    BO::Leq => self.leq(rhs, dest),
+                    BO::Gt => self.gt(rhs, dest),
+                    BO::Geq => self.geq(rhs, dest),
+                    BO::And => self.and(rhs, dest),
+                    BO::Or => self.or(rhs, dest),
                 }
                 self.dealloc(2);
             }
-            E::Number(n) => self.set_val(out, *n),
+            E::Number(n) => self.set_val(dest, *n),
             E::String(_) => todo!("Strings are not yet supported"),
             E::Identifier(name) => match self.name_table.get(name) {
-                Some(index) => self.copy_val(*index, out),
+                Some(index) => self.copy_val(*index, &[dest]),
                 None => return Err(format!("Variable {} is not defined", name)),
             },
             E::Call { callee, args } => todo!(),
         }
-        Ok(out)
+        Ok(())
     }
 }
 
