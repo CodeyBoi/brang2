@@ -44,10 +44,12 @@ impl Compiler {
         self.stack_ptr -= size as isize;
     }
 
-    fn alloc_var(&mut self, name: &str) -> usize {
+    fn alloc_var(&mut self, name: &str) -> Result<usize, String> {
         let index = self.alloc(1);
-        self.name_table.insert(name.to_string(), index);
-        index
+        match self.name_table.insert(name.to_string(), index) {
+            Some(_) => Err(format!("Variable {} is already defined", name)),
+            None => Ok(index),
+        }
     }
 
     fn dealloc_var(&mut self, name: &str) {
@@ -57,15 +59,8 @@ impl Compiler {
 
     fn move_ptr(&mut self, offset: isize) {
         self.ptr += offset;
-        if offset > 0 {
-            for _ in 0..offset {
-                self.emit(">");
-            }
-        } else {
-            for _ in 0..(-offset) {
-                self.emit("<");
-            }
-        }
+        let dir = if offset > 0 { ">" } else { "<" };
+        self.emit(&dir.repeat(offset.abs() as usize));
     }
 
     fn set_ptr(&mut self, index: usize) {
@@ -224,6 +219,7 @@ impl Compiler {
                 else_branch,
             } => self.if_statement(&condition, &then_branch, else_branch.as_deref())?,
             S::While { condition, body } => self.while_statement(&condition, &body)?,
+            S::Assignment { name, value } => self.assignment(name, value)?,
         }
         Ok(())
     }
@@ -242,12 +238,44 @@ impl Compiler {
         name: &str,
         initializer: Option<&Expr>,
     ) -> Result<(), String> {
-        let index = self.alloc_var(name);
+        let index = self.alloc_var(name)?;
         if let Some(init) = initializer {
             let expr_index = self.alloc(1);
             self.evaluate_expression(&init, expr_index)?;
             self.move_val(expr_index, index);
             self.dealloc(1);
+        }
+        Ok(())
+    }
+
+    fn assignment(&mut self, name: &str, value: &Expr) -> Result<(), String> {
+        let var = match self.name_table.get(name) {
+            Some(index) => *index,
+            None => return Err(format!("Variable {} is not defined", name)),
+        };
+        let expr = self.alloc(1);
+        let expr = self.evaluate_expression(&value, expr)?;
+        self.move_val(expr, var);
+        self.dealloc(1);
+        Ok(())
+    }
+
+    fn block(&mut self, statements: &[Statement]) -> Result<(), String> {
+        // Save the names of all variables defined in this block so we can deallocate them at the end of the block
+        let mut varnames = Vec::new();
+        for stmt in statements {
+            use crate::parser::Statement as S;
+            match stmt {
+                S::VariableDefinition { name, .. } => {
+                    varnames.push(name);
+                }
+                _ => continue,
+            }
+        }
+        self.compile(statements)?;
+        // Deallocate all variables defined in this block
+        for name in varnames {
+            self.dealloc_var(name);
         }
         Ok(())
     }
@@ -259,11 +287,11 @@ impl Compiler {
         else_branch: Option<&Statement>,
     ) -> Result<(), String> {
         let condition_index = self.alloc(1);
-        self.evaluate_expression(&condition, condition_index)?;
-        self.set_ptr(condition_index);
+        let cond = self.evaluate_expression(&condition, condition_index)?;
+        self.set_ptr(cond);
         self.emit("[[-]");
         self.evaluate_statement(then_branch)?;
-        self.set_ptr(condition_index);
+        self.set_ptr(cond);
         if let Some(branch) = else_branch {
             self.emit("-]+[");
             self.evaluate_statement(branch)?;
@@ -278,7 +306,7 @@ impl Compiler {
 
     /// Evaluates an expression and writes the output to `dest`.
     /// The value at `dest` is assumed to be 0.
-    fn evaluate_expression(&mut self, expr: &Expr, dest: usize) -> Result<(), String> {
+    fn evaluate_expression(&mut self, expr: &Expr, dest: usize) -> Result<usize, String> {
         use crate::parser::BinaryOp as BO;
         use crate::parser::Expr as E;
         match expr {
@@ -318,7 +346,7 @@ impl Compiler {
             },
             E::Call { callee, args } => todo!(),
         }
-        Ok(())
+        Ok(dest)
     }
 }
 

@@ -22,6 +22,10 @@ pub(crate) enum Statement {
         name: String,
         initializer: Option<Expr>,
     },
+    Assignment {
+        name: String,
+        value: Expr,
+    },
     Return(Option<Expr>),
     Print(Expr),
     Block(Vec<Statement>),
@@ -260,7 +264,9 @@ impl Parser {
 
     fn print(&mut self) -> Result<Statement, String> {
         self.expect(Token::Print)?; // print
+        self.expect(Token::LeftParen)?; // (
         let expr = self.expression()?;
+        self.expect(Token::RightParen)?; // )
         self.expect(Token::Semicolon)?; // ;
         Ok(Statement::Print(expr))
     }
@@ -322,10 +328,7 @@ impl Parser {
         self.expect(Token::Equal)?; // =
         let value = self.expression()?;
         self.expect(Token::Semicolon)?; // ;
-        Ok(Statement::VariableDefinition {
-            name,
-            initializer: Some(value),
-        })
+        Ok(Statement::Assignment { name, value })
     }
 
     fn expression(&mut self) -> Result<Expr, String> {
