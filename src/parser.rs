@@ -54,8 +54,8 @@ pub(crate) enum Expr {
     Number(u8),
     String(String),
     Identifier(String),
-    Call {
-        callee: Box<Expr>,
+    FunctionCall {
+        callee: String,
         args: Vec<Expr>,
     },
 }
@@ -188,7 +188,6 @@ impl Parser {
                 Err(error) => errors.push(error),
             }
         }
-        println!("Errors: {:?}", errors);
         if errors.is_empty() {
             Ok(Program::new(statements))
         } else {
@@ -351,10 +350,7 @@ impl Parser {
                         }
                     }
                     self.expect(T::RightParen)?; // )
-                    Expr::Call {
-                        callee: Box::new(Expr::Identifier(name)),
-                        args,
-                    }
+                    Expr::FunctionCall { callee: name, args }
                 }
                 _ => Expr::Identifier(name),
             },
