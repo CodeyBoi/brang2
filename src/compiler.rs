@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     parser::{parse, Expr, Statement},
-    tokenizer::tokenize,
+    tokenizer::{tokenize, Token},
 };
 
 pub(crate) struct Compiler {
@@ -473,7 +473,7 @@ impl Compiler {
 }
 
 pub fn compile(src: &str) -> Result<String, String> {
-    let tokens = tokenize(src);
+    let tokens: Vec<Token> = tokenize(src).collect();
     let program = parse(&tokens)?;
     let mut compiler = Compiler::new();
     compiler.compile(&program.statements)?;
