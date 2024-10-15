@@ -26,6 +26,7 @@ pub(crate) enum Statement {
         name: String,
         value: Expr,
     },
+    #[allow(dead_code)]
     Return(Option<Expr>),
     Print(Expr),
     Block(Vec<Statement>),

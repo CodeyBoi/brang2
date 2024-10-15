@@ -1,11 +1,15 @@
 Print
 String("input: ")
 Semicolon
-Identifier("getchar")
+Let
 Identifier("a")
+Equal
+Number(2)
 Semicolon
-Identifier("getchar")
+Let
 Identifier("b")
+Equal
+Number(5)
 Semicolon
 If
 Identifier("a")
@@ -13,7 +17,7 @@ Less
 Identifier("b")
 LeftBrace
 Print
-String("a<b\\n")
+String("a<b\n")
 Semicolon
 RightBrace
 Else
@@ -23,13 +27,12 @@ Greater
 Identifier("b")
 LeftBrace
 Print
-String("a>b\\n")
+String("a>b\n")
 Semicolon
 RightBrace
 Else
 LeftBrace
 Print
-String("a=b\\n")
+String("a=b\n")
 Semicolon
 RightBrace
-Eof

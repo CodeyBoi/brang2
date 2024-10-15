@@ -1,3 +1,4 @@
+#![allow(dead_code, unused_variables)]
 use std::collections::HashMap;
 
 use crate::{
@@ -106,7 +107,7 @@ impl Compiler {
     fn move_ptr(&mut self, offset: isize) {
         self.ptr += offset;
         let dir = if offset > 0 { ">" } else { "<" };
-        self.emit(&dir.repeat(offset.abs() as usize));
+        self.emit(&dir.repeat(offset.unsigned_abs()));
     }
 
     fn set_ptr(&mut self, index: usize) {
@@ -273,7 +274,7 @@ impl Compiler {
                     if let Some(init) = initializer {
                         match init {
                             Expr::String(s) => {
-                                if let None = self.string_literals.get(s) {
+                                if !self.string_literals.contains_key(s) {
                                     self.add_string_literal(s)?;
                                 }
                             }
@@ -282,23 +283,20 @@ impl Compiler {
                     }
                 }
 
-                S::Assignment { name, value } => match value {
-                    Expr::String(s) => {
-                        if let None = self.string_literals.get(s) {
-                            self.add_string_literal(s)?;
-                        }
+                S::Assignment {
+                    name,
+                    value: Expr::String(s),
+                } => {
+                    if !self.string_literals.contains_key(s) {
+                        self.add_string_literal(s)?;
                     }
-                    _ => continue,
-                },
+                }
                 S::Return(_) => todo!("Return statements not implemented"),
-                S::Print(expr) => match expr {
-                    Expr::String(s) => {
-                        if let None = self.string_literals.get(s) {
-                            self.add_string_literal(s)?;
-                        }
+                S::Print(Expr::String(s)) => {
+                    if !self.string_literals.contains_key(s) {
+                        self.add_string_literal(s)?;
                     }
-                    _ => continue,
-                },
+                }
                 _ => continue,
             }
         }
@@ -312,10 +310,10 @@ impl Compiler {
         use crate::parser::Statement as S;
         match stmt {
             S::FunctionDefinition { name, params, body } => {
-                self.function_declaration(&name, &params, body)?
+                self.function_declaration(name, params, body)?
             }
             S::VariableDefinition { name, initializer } => {
-                self.variable_definition(&name, initializer.as_ref())?
+                self.variable_definition(name, initializer.as_ref())?
             }
             S::Return(_) => todo!("Return statements are not yet supported"),
             S::Print(expr) => match expr {
@@ -332,8 +330,8 @@ impl Compiler {
                 condition,
                 then_branch,
                 else_branch,
-            } => self.if_statement(&condition, &then_branch, else_branch.as_deref())?,
-            S::While { condition, body } => self.while_statement(&condition, &body)?,
+            } => self.if_statement(condition, then_branch, else_branch.as_deref())?,
+            S::While { condition, body } => self.while_statement(condition, body)?,
             S::Assignment { name, value } => self.assignment(name, value)?,
         }
         Ok(())
@@ -356,7 +354,7 @@ impl Compiler {
         let index = self.alloc_var(name)?;
         if let Some(init) = initializer {
             let expr_index = self.calloc(1);
-            self.evaluate_expression(&init, expr_index)?;
+            self.evaluate_expression(init, expr_index)?;
             self.move_val(expr_index, index);
             self.dealloc(1);
         }
@@ -369,7 +367,7 @@ impl Compiler {
             None => return Err(format!("Variable {} is not defined", name)),
         };
         let expr = self.calloc(1);
-        let expr = self.evaluate_expression(&value, expr)?;
+        let expr = self.evaluate_expression(value, expr)?;
         self.move_val(expr, var);
         self.dealloc(1);
         Ok(())
@@ -402,7 +400,7 @@ impl Compiler {
         else_branch: Option<&Statement>,
     ) -> Result<(), String> {
         let condition_index = self.calloc(1);
-        let cond = self.evaluate_expression(&condition, condition_index)?;
+        let cond = self.evaluate_expression(condition, condition_index)?;
         self.set_ptr(cond);
         self.emit("[[-]");
         self.evaluate_statement(then_branch)?;
@@ -433,8 +431,8 @@ impl Compiler {
             } => {
                 let lhs = self.calloc(1);
                 let rhs = self.calloc(1);
-                self.evaluate_expression(&lhs_expr, lhs)?;
-                self.evaluate_expression(&rhs_expr, rhs)?;
+                self.evaluate_expression(lhs_expr, lhs)?;
+                self.evaluate_expression(rhs_expr, rhs)?;
                 self.dadd(lhs, dest);
                 match op {
                     BO::Add => self.dadd(rhs, dest),

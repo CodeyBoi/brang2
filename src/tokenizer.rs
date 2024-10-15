@@ -159,11 +159,9 @@ impl<'a> Iterator for TokenStream<'a> {
                     }
                 }
                 '"' => Token::String(read_string(&mut self.chars)),
-                n if n >= '0' && n <= '9' => Token::Number(read_number(&mut self.chars, n)),
-                n if n >= 'a' && n <= 'z' || n >= 'A' && n <= 'Z' => {
-                    read_identifier(&mut self.chars, n)
-                }
                 ' ' | '\n' | '\t' | '\r' => return self.next(),
+                n if n.is_ascii_digit() => Token::Number(read_number(&mut self.chars, n)),
+                n if n.is_ascii() => read_identifier(&mut self.chars, n),
                 _ => Token::Error(format!("Unexpected character: {}", c)),
             };
             Some(token)
@@ -173,7 +171,7 @@ impl<'a> Iterator for TokenStream<'a> {
     }
 }
 
-pub fn tokenize<'a>(src: &'a str) -> TokenStream<'a> {
+pub fn tokenize(src: &str) -> TokenStream<'_> {
     TokenStream {
         chars: src.chars().peekable(),
     }
@@ -183,7 +181,7 @@ fn read_number(chars: &mut Peekable<Chars<'_>>, first_num: char) -> u8 {
     let mut number = String::new();
     number.push(first_num);
     while let Some(c) = chars.peek() {
-        if c.is_digit(10) {
+        if c.is_ascii_digit() {
             number.push(*c);
             chars.next();
         } else {
@@ -216,7 +214,7 @@ fn read_string(chars: &mut Peekable<Chars<'_>>) -> String {
 
 fn read_comment(chars: &mut Peekable<Chars<'_>>) -> String {
     let mut comment = String::new();
-    while let Some(c) = chars.next() {
+    for c in chars.by_ref() {
         match c {
             '\n' => break,
             _ => comment.push(c),

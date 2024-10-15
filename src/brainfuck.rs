@@ -41,8 +41,7 @@ fn to_bf(src: &str) -> Result<String, RunError> {
     let mut indent = 4;
     let mut out = String::new();
     out.push_str("use std::io::Read;\n");
-    out.push_str("use std::io::Write;\n");
-    out.push_str("\n");
+    out.push_str("use std::io::Write;\n\n");
     out.push_str("fn main() {\n");
     out.push_str("    let mut sp = 0;\n");
     out.push_str("    let mut stack = vec![0u8; 30000];\n");

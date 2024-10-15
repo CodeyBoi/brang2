@@ -6,6 +6,7 @@ use std::{
 use clap::{Parser, Subcommand};
 
 mod brainfuck;
+mod bytecode;
 mod compiler;
 mod parser;
 mod tokenizer;
@@ -35,7 +36,7 @@ fn main() {
             let src = std::fs::read_to_string(&input).expect("Could not read source code file");
             let compilation = compiler::compile(&src).expect("Could not compile source code");
             let outfile = File::create(&output).expect("Could not create output file");
-            Write::write_all(&mut BufWriter::new(outfile), &compilation.as_bytes())
+            Write::write_all(&mut BufWriter::new(outfile), compilation.as_bytes())
                 .expect("Could not write to output file");
         }
         Command::Run { srcfile } => brainfuck::run_file(srcfile).expect("Error when running file"),

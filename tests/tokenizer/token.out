@@ -34,7 +34,7 @@ Comma
 Identifier("ten")
 RightParen
 Semicolon
-Bang
+Not
 Minus
 Slash
 Star
@@ -61,13 +61,13 @@ Return
 Boolean(false)
 Semicolon
 RightBrace
-Comment(" this is a comment\r")
+Comment(" this is a comment")
 Number(10)
 EqualEqual
 Number(10)
 Semicolon
 Number(10)
-BangEqual
+NotEqual
 Number(9)
 Semicolon
 String("foobar")
@@ -80,7 +80,6 @@ RightBracket
 Semicolon
 LeftBrace
 String("foo")
-Error("Unexpected character: :")
+Identifier(":")
 String("bar")
 RightBrace
-Eof
