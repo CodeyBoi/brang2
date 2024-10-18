@@ -13,6 +13,7 @@ pub(crate) struct Compiler {
     variables: HashMap<String, usize>,
     functions: HashMap<String, String>,
     string_literals: HashMap<String, usize>,
+    free_list: Vec<usize>,
 }
 
 impl Compiler {
@@ -24,12 +25,40 @@ impl Compiler {
             variables: HashMap::new(),
             functions: HashMap::new(),
             string_literals: HashMap::new(),
+            free_list: Vec::new(),
         }
     }
 
-    /// Writes a brainfuck code string to the output
+    /// Writes a brainfuck code string to the output. Numbers are treated as pointers.
     fn emit(&mut self, src: &str) {
-        for c in src.chars() {
+        let mut c;
+        let mut cs = src.chars();
+        loop {
+            c = if let Some(c) = cs.next() {
+                c
+            } else {
+                return;
+            };
+
+            // Handle numbers
+            if c.is_ascii_digit() {
+                let mut index = c as u8 - b'0';
+                loop {
+                    c = if let Some(c) = cs.next() {
+                        c
+                    } else {
+                        self.set_ptr(index as usize);
+                        return;
+                    };
+                    if c.is_ascii_digit() {
+                        index = index * 10 + c as u8 - b'0';
+                    } else {
+                        break;
+                    }
+                }
+                self.set_ptr(index as usize);
+            }
+
             self.output.push(c);
         }
     }
@@ -67,6 +96,20 @@ impl Compiler {
         }
     }
 
+    fn print_str(&mut self, s: &str) {
+        let mut current = 0;
+        let tmp = self.calloc(1);
+        self.set_ptr(tmp);
+        for c in s.chars() {
+            let target = c as usize;
+            let dir = if target > current { "+" } else { "-" };
+            self.emit(&dir.repeat(current.abs_diff(c as usize)));
+            self.emit(".");
+            current = target;
+        }
+        self.dealloc(1);
+    }
+
     /// Allocates `size` cells on the stack and returns the index of the first cell.
     /// The cells are not initialized.
     fn malloc(&mut self, size: usize) -> usize {
@@ -78,8 +121,7 @@ impl Compiler {
     /// Allocates `size` cells on the stack and returns the index of the first cell.
     /// The cells are initialized to 0.
     fn calloc(&mut self, size: usize) -> usize {
-        let index = self.stack_ptr as usize;
-        self.stack_ptr += size as isize;
+        let index = self.malloc(size);
         // Initialize the cells to 0
         for i in 0..size {
             self.set(index + i, 0);
@@ -92,7 +134,11 @@ impl Compiler {
     }
 
     fn alloc_var(&mut self, name: &str) -> Result<usize, String> {
-        let index = self.calloc(1);
+        let index = if let Some(idx) = self.free_list.pop() {
+            idx
+        } else {
+            self.calloc(1)
+        };
         match self.variables.insert(name.to_string(), index) {
             Some(_) => Err(format!("Variable {} is already defined", name)),
             None => Ok(index),
@@ -101,7 +147,7 @@ impl Compiler {
 
     fn dealloc_var(&mut self, name: &str) {
         let index = self.variables.remove(name).unwrap();
-        self.dealloc(index);
+        self.free_list.push(index);
     }
 
     fn move_ptr(&mut self, offset: isize) {
@@ -173,15 +219,28 @@ impl Compiler {
         self.dealloc(1);
     }
 
+    fn neg(&mut self, rhs: usize) {
+        todo!("Negation is not yet supported")
+    }
+
+    fn not(&mut self, rhs: usize) {
+        let one = self.malloc(1);
+        self.set(one, 1);
+        self.emit(&format!("{0}[[-]{1}-{0}]", rhs, one));
+        self.dadd(one, rhs);
+        self.dealloc(1);
+    }
+
     /// Adds the value at `src` to the value at `dest` and writes it to `dest`.
     /// The value at `src` is set to 0. (the d stands for destructive)
     fn dadd(&mut self, src: usize, dest: usize) {
-        self.set_ptr(src);
-        self.emit("[-");
-        self.set_ptr(dest);
-        self.emit("+");
-        self.set_ptr(src);
-        self.emit("]");
+        self.emit(&format!("{0}[-{1}+{0}]", src, dest));
+        // self.set_ptr(src);
+        // self.emit("[-");
+        // self.set_ptr(dest);
+        // self.emit("+");
+        // self.set_ptr(src);
+        // self.emit("]");
     }
 
     /// Adds the value at `src` to the value at `dest` and writes it to `dest`.
@@ -234,11 +293,12 @@ impl Compiler {
     }
 
     fn eq(&mut self, src: usize, dest: usize) {
-        todo!("Equality is not yet supported")
+        self.neq(src, dest);
+        self.not(dest);
     }
 
     fn neq(&mut self, src: usize, dest: usize) {
-        todo!("Inequality is not yet supported")
+        self.dsub(src, dest);
     }
 
     fn lt(&mut self, src: usize, dest: usize) {
@@ -266,40 +326,35 @@ impl Compiler {
     }
 
     fn compile(&mut self, statements: &[Statement]) -> Result<(), String> {
-        // First allocate space for all string literals
-        for stmt in statements {
-            use crate::parser::Statement as S;
-            match stmt {
-                S::VariableDefinition { name, initializer } => {
-                    if let Some(init) = initializer {
-                        match init {
-                            Expr::String(s) => {
-                                if !self.string_literals.contains_key(s) {
-                                    self.add_string_literal(s)?;
-                                }
-                            }
-                            _ => continue,
-                        }
-                    }
-                }
+        // // First allocate space for all string literals
+        // for stmt in statements {
+        //     use crate::parser::Statement as S;
+        //     match stmt {
+        //         S::VariableDefinition { name, initializer } => {
+        //             if let Some(Expr::String(s)) = initializer {
+        //                 if !self.string_literals.contains_key(s) {
+        //                     self.add_string_literal(s)?;
+        //                 }
+        //             }
+        //         }
 
-                S::Assignment {
-                    name,
-                    value: Expr::String(s),
-                } => {
-                    if !self.string_literals.contains_key(s) {
-                        self.add_string_literal(s)?;
-                    }
-                }
-                S::Return(_) => todo!("Return statements not implemented"),
-                S::Print(Expr::String(s)) => {
-                    if !self.string_literals.contains_key(s) {
-                        self.add_string_literal(s)?;
-                    }
-                }
-                _ => continue,
-            }
-        }
+        //         S::Assignment {
+        //             name,
+        //             value: Expr::String(s),
+        //         } => {
+        //             if !self.string_literals.contains_key(s) {
+        //                 self.add_string_literal(s)?;
+        //             }
+        //         }
+        //         S::Return(_) => todo!("Return statements not implemented"),
+        //         S::Print(Expr::String(s)) => {
+        //             if !self.string_literals.contains_key(s) {
+        //                 self.add_string_literal(s)?;
+        //             }
+        //         }
+        //         _ => continue,
+        //     }
+        // }
         for stmt in statements {
             self.evaluate_statement(stmt)?;
         }
@@ -318,8 +373,7 @@ impl Compiler {
             S::Return(_) => todo!("Return statements are not yet supported"),
             S::Print(expr) => match expr {
                 Expr::String(s) => {
-                    let index = self.string_literals.get(s).unwrap();
-                    self.print_str_at(*index);
+                    self.print_str(s);
                 }
                 _ => {
                     todo!("Print statements that doesn't use string literals are not yet supported")
@@ -399,17 +453,20 @@ impl Compiler {
         then_branch: &Statement,
         else_branch: Option<&Statement>,
     ) -> Result<(), String> {
-        let condition_index = self.calloc(1);
-        let cond = self.evaluate_expression(condition, condition_index)?;
-        self.set_ptr(cond);
-        self.emit("[[-]");
+        let cond = self.calloc(1);
+        let one = self.malloc(1);
+        self.set(one, 1);
+        self.evaluate_expression(condition, cond)?;
+        self.emit(&format!("{0}[[-]{1}-{0}", cond, one));
         self.evaluate_statement(then_branch)?;
         self.set_ptr(cond);
         if let Some(branch) = else_branch {
-            self.emit("-]+[");
+            self.emit(&format!("]{0}[", one));
             self.evaluate_statement(branch)?;
+            self.set_ptr(cond);
         }
         self.emit("]");
+        self.dealloc(2);
         Ok(())
     }
 
@@ -418,12 +475,19 @@ impl Compiler {
     }
 
     /// Evaluates an expression and writes the output to `dest`.
-    /// The value at `dest` is assumed to be 0.
+    /// The value at dest is assumed to be zeroed.
     fn evaluate_expression(&mut self, expr: &Expr, dest: usize) -> Result<usize, String> {
         use crate::parser::BinaryOp as BO;
         use crate::parser::Expr as E;
+        use crate::parser::UnaryOp as UO;
         match expr {
-            E::Unary { op, rhs } => todo!(),
+            E::Unary { op, rhs: rhs_expr } => {
+                self.evaluate_expression(rhs_expr, dest)?;
+                match op {
+                    UO::Neg => self.neg(dest),
+                    UO::Not => self.not(dest),
+                }
+            }
             E::Binary {
                 lhs: lhs_expr,
                 op,

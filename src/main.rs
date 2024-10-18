@@ -6,8 +6,8 @@ use std::{
 use clap::{Parser, Subcommand};
 
 mod brainfuck;
-mod bytecode;
 mod compiler;
+mod interpreter;
 mod parser;
 mod tokenizer;
 
@@ -21,10 +21,13 @@ struct Cli {
 enum Command {
     Make {
         input: String,
-        #[clap(short, long, default_value = "out.b")]
+        #[clap(short, long, default_value = "out.bf")]
         output: String,
     },
     Run {
+        srcfile: String,
+    },
+    Interpret {
         srcfile: String,
     },
 }
@@ -40,5 +43,6 @@ fn main() {
                 .expect("Could not write to output file");
         }
         Command::Run { srcfile } => brainfuck::run_file(srcfile).expect("Error when running file"),
+        Command::Interpret { srcfile } => interpreter::run(&srcfile),
     }
 }

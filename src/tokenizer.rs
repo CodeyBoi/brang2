@@ -81,12 +81,17 @@ impl Token {
 
 pub struct TokenStream<'a> {
     chars: Peekable<Chars<'a>>,
+    is_eof: bool,
 }
 
 impl<'a> Iterator for TokenStream<'a> {
     type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
+        if self.is_eof {
+            return None;
+        }
+
         if let Some(c) = self.chars.next() {
             let token = match c {
                 '(' => Token::LeftParen,
@@ -166,7 +171,8 @@ impl<'a> Iterator for TokenStream<'a> {
             };
             Some(token)
         } else {
-            None
+            self.is_eof = true;
+            Some(Token::Eof)
         }
     }
 }
@@ -174,6 +180,7 @@ impl<'a> Iterator for TokenStream<'a> {
 pub fn tokenize(src: &str) -> TokenStream<'_> {
     TokenStream {
         chars: src.chars().peekable(),
+        is_eof: false,
     }
 }
 
